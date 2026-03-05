@@ -1,4 +1,4 @@
-import { Shield, LayoutDashboard, List, BarChart3, Globe, ShieldAlert, LogIn, LogOut } from 'lucide-react';
+import { Shield, LayoutDashboard, List, BarChart3, Globe, ShieldAlert, LogIn, LogOut, Users } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -19,6 +19,7 @@ const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Transactions', url: '/transactions', icon: List },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
+  { title: 'User Intel', url: '/users', icon: Users },
   { title: 'Fraud Map', url: '/fraud-map', icon: Globe },
   { title: 'Admin Panel', url: '/admin', icon: ShieldAlert },
 ];
