@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle, ShieldAlert, XCircle, Network, Monitor, MapPin, DollarSign, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ShieldAlert, XCircle, Network, Monitor, MapPin, DollarSign, Clock, FileText } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Transaction } from '@/lib/types';
 import { detectFraudRings, FraudRing } from '@/lib/fraud-rings';
 import { FraudRingGraph } from '@/components/FraudRingGraph';
+import { IncidentReportModal } from '@/components/IncidentReportModal';
 
 const ATTR_ICON: Record<string, React.ReactNode> = {
   device: <Monitor className="h-3 w-3" />,
@@ -27,6 +28,7 @@ function ConfidenceBadge({ score }: { score: number }) {
 const Admin = () => {
   const { transactions, updateTransactionStatus } = useTransactions();
   const [selected, setSelected] = useState<Transaction | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const flagged = useMemo(() =>
     transactions.filter(t => t.riskLevel === 'high'),
@@ -41,9 +43,15 @@ const Admin = () => {
 
   return (
     <div className="space-y-6 p-6 animate-slide-in">
-      <div>
-        <h1 className="text-2xl font-bold">Admin Panel</h1>
-        <p className="text-sm text-muted-foreground">Review and manage flagged transactions</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Admin Panel</h1>
+          <p className="text-sm text-muted-foreground">Review and manage flagged transactions</p>
+        </div>
+        <Button variant="outline" className="gap-2" onClick={() => setReportOpen(true)}>
+          <FileText className="h-4 w-4" />
+          Generate Incident Report
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -189,6 +197,7 @@ const Admin = () => {
       </Card>
 
       <TransactionDetail transaction={selected} open={!!selected} onClose={() => setSelected(null)} />
+      <IncidentReportModal open={reportOpen} onClose={() => setReportOpen(false)} flagged={flagged} />
     </div>
   );
 };
