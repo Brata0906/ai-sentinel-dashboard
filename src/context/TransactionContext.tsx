@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Transaction, KPIData } from '@/lib/types';
 import { generateTransaction } from '@/lib/fraud-engine';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface TransactionContextType {
   transactions: Transaction[];
@@ -13,6 +14,43 @@ interface TransactionContextType {
 
 const TransactionContext = createContext<TransactionContextType | null>(null);
 
+function txnToRow(txn: Transaction) {
+  return {
+    id: txn.id,
+    user_id_field: txn.userId,
+    amount: txn.amount,
+    location_name: txn.location.name,
+    location_country: txn.location.country,
+    location_lat: txn.location.lat,
+    location_lng: txn.location.lng,
+    device_type: txn.deviceType,
+    risk_score: txn.riskScore,
+    risk_level: txn.riskLevel,
+    risk_factors: JSON.parse(JSON.stringify(txn.riskFactors)),
+    status: txn.status,
+  };
+}
+
+function rowToTxn(row: any): Transaction {
+  return {
+    id: row.id,
+    userId: row.user_id_field,
+    amount: Number(row.amount),
+    location: {
+      name: row.location_name,
+      country: row.location_country,
+      lat: Number(row.location_lat),
+      lng: Number(row.location_lng),
+    },
+    deviceType: row.device_type,
+    timestamp: new Date(row.created_at),
+    riskScore: row.risk_score,
+    riskLevel: row.risk_level as 'safe' | 'medium' | 'high',
+    riskFactors: (row.risk_factors as any[]) || [],
+    status: row.status as 'pending' | 'confirmed_fraud' | 'cleared',
+  };
+}
+
 export function TransactionProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isRunning, setIsRunning] = useState(true);
@@ -20,12 +58,29 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  const addTransaction = useCallback(() => {
+  // Load existing transactions from DB on mount
+  useEffect(() => {
+    const loadTransactions = async () => {
+      const { data } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (data && data.length > 0) {
+        setTransactions(data.map(rowToTxn));
+      }
+    };
+    loadTransactions();
+  }, []);
+
+  const addTransaction = useCallback(async () => {
     const txn = generateTransaction();
-    setTransactions(prev => {
-      const updated = [txn, ...prev].slice(0, 500); // keep last 500
-      return updated;
-    });
+    
+    // Add to local state immediately
+    setTransactions(prev => [txn, ...prev].slice(0, 500));
+
+    // Persist to database
+    await supabase.from('transactions').insert(txnToRow(txn));
 
     if (txn.riskLevel === 'high') {
       toastRef.current({
@@ -38,10 +93,17 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!isRunning) return;
-    // Generate a few initial transactions
-    for (let i = 0; i < 15; i++) {
-      const txn = generateTransaction();
-      setTransactions(prev => [txn, ...prev]);
+    
+    // Generate initial transactions only if DB was empty
+    if (transactions.length === 0) {
+      const initTxns: Transaction[] = [];
+      for (let i = 0; i < 15; i++) {
+        const txn = generateTransaction();
+        initTxns.push(txn);
+      }
+      setTransactions(initTxns);
+      // Persist initial batch
+      supabase.from('transactions').insert(initTxns.map(txnToRow));
     }
 
     const interval = setInterval(() => {
@@ -63,8 +125,10 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
     };
   }, [transactions]);
 
-  const updateTransactionStatus = useCallback((id: string, status: 'confirmed_fraud' | 'cleared') => {
+  const updateTransactionStatus = useCallback(async (id: string, status: 'confirmed_fraud' | 'cleared') => {
     setTransactions(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+    // Persist status update to DB
+    await supabase.from('transactions').update({ status }).eq('id', id);
   }, []);
 
   const toggleSimulation = useCallback(() => setIsRunning(prev => !prev), []);
