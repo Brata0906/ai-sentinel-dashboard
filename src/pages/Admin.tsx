@@ -2,12 +2,27 @@ import { useTransactions } from '@/context/TransactionContext';
 import { KPICard } from '@/components/KPICard';
 import { RiskBadge, StatusBadge } from '@/components/RiskBadge';
 import { TransactionDetail } from '@/components/TransactionDetail';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, CheckCircle, ShieldAlert, XCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, CheckCircle, ShieldAlert, XCircle, Network, Monitor, MapPin, DollarSign, Clock } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Transaction } from '@/lib/types';
+import { detectFraudRings, FraudRing } from '@/lib/fraud-rings';
+import { FraudRingGraph } from '@/components/FraudRingGraph';
+
+const ATTR_ICON: Record<string, React.ReactNode> = {
+  device: <Monitor className="h-3 w-3" />,
+  location: <MapPin className="h-3 w-3" />,
+  amount: <DollarSign className="h-3 w-3" />,
+  timing: <Clock className="h-3 w-3" />,
+};
+
+function ConfidenceBadge({ score }: { score: number }) {
+  const variant = score >= 70 ? 'destructive' : score >= 40 ? 'secondary' : 'outline';
+  return <Badge variant={variant} className="text-[10px] font-bold">{score}%</Badge>;
+}
 
 const Admin = () => {
   const { transactions, updateTransactionStatus } = useTransactions();
@@ -17,6 +32,8 @@ const Admin = () => {
     transactions.filter(t => t.riskLevel === 'high'),
     [transactions]
   );
+
+  const rings = useMemo(() => detectFraudRings(transactions), [transactions]);
 
   const pending = flagged.filter(t => t.status === 'pending').length;
   const confirmed = flagged.filter(t => t.status === 'confirmed_fraud').length;
@@ -34,6 +51,75 @@ const Admin = () => {
         <KPICard title="Confirmed Fraud" value={confirmed} icon={ShieldAlert} variant="danger" />
         <KPICard title="Cleared" value={cleared} icon={CheckCircle} variant="success" />
       </div>
+
+      {/* Fraud Ring Detection */}
+      <Card className="border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Network className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Fraud Ring Detection</CardTitle>
+            </div>
+            <Badge variant="secondary" className="text-xs">{rings.length} clusters</Badge>
+          </div>
+          <CardDescription>
+            Clusters of flagged transactions sharing device, location, amount range, or timing patterns
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {rings.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              No fraud rings detected yet — need more flagged transactions with shared attributes
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {rings.map(ring => (
+                <Card key={ring.id} className="border-border/30 bg-card/50">
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-sm font-semibold">{ring.id}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Confidence</span>
+                        <ConfidenceBadge score={ring.confidence} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">{ring.transactions.length} nodes · {ring.edges.length} links</span>
+                      <span className="text-muted-foreground">·</span>
+                      <div className="flex gap-1">
+                        {ring.sharedAttributes.map(attr => (
+                          <span key={attr} className="flex items-center gap-0.5 text-[10px] text-muted-foreground" title={attr}>
+                            {ATTR_ICON[attr]}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="h-[220px] rounded-md bg-background/50 border border-border/30 overflow-hidden">
+                      <FraudRingGraph ring={ring} />
+                    </div>
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-3 mt-3 text-[10px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-destructive inline-block" /> Confirmed
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-warning inline-block" /> Pending
+                      </span>
+                      {ring.sharedAttributes.map(attr => (
+                        <span key={attr} className="flex items-center gap-1 capitalize">
+                          {ATTR_ICON[attr]} {attr}
+                        </span>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-border/50">
         <CardHeader className="pb-3">
