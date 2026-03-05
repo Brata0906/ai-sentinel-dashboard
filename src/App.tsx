@@ -14,6 +14,7 @@ import Analytics from "./pages/Analytics";
 import FraudMap from "./pages/FraudMap";
 import Admin from "./pages/Admin";
 import Login from "./pages/Login";
+import UserIntelligence from "./pages/UserIntelligence";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
                 <Route path="/transactions" element={<Transactions />} />
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/fraud-map" element={<FraudMap />} />
+                <Route path="/users" element={<UserIntelligence />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/admin" element={
                   <ProtectedRoute>
