@@ -1,17 +1,22 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Transaction } from '@/lib/types';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Copy, CheckCircle, AlertTriangle, MapPin } from 'lucide-react';
+import { Copy, AlertTriangle, MapPin, Download, Send, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { generateIncidentPDF } from '@/lib/incident-report-pdf';
+import { buildReportHtml } from '@/lib/incident-report-email';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Props {
   open: boolean;
@@ -21,6 +26,8 @@ interface Props {
 
 export function IncidentReportModal({ open, onClose, flagged }: Props) {
   const { toast } = useToast();
+  const [emailTo, setEmailTo] = useState('');
+  const [sending, setSending] = useState(false);
 
   const sorted = useMemo(
     () => [...flagged].sort((a, b) => b.riskScore - a.riskScore),
@@ -83,6 +90,38 @@ export function IncidentReportModal({ open, onClose, flagged }: Props) {
   const handleCopy = async () => {
     await navigator.clipboard.writeText(buildPlainText());
     toast({ title: 'Report copied to clipboard' });
+  };
+
+  const handleDownloadPDF = () => {
+    const doc = generateIncidentPDF(flagged);
+    doc.save(`incident-report-${format(now, 'yyyy-MM-dd-HHmm')}.pdf`);
+    toast({ title: 'PDF downloaded' });
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailTo.trim()) {
+      toast({ title: 'Enter recipient email(s)', variant: 'destructive' });
+      return;
+    }
+    setSending(true);
+    try {
+      const recipients = emailTo.split(',').map(e => e.trim()).filter(Boolean);
+      const { data, error } = await supabase.functions.invoke('send-incident-report', {
+        body: {
+          to: recipients,
+          subject: `[AI Sentinel] Incident Report — ${format(now, 'PP')} — ${flagged.length} flagged`,
+          reportHtml: buildReportHtml(flagged),
+          reportText: buildPlainText(),
+        },
+      });
+      if (error) throw error;
+      toast({ title: `Report sent to ${recipients.length} recipient(s)` });
+      setEmailTo('');
+    } catch (err: any) {
+      toast({ title: 'Failed to send', description: err.message, variant: 'destructive' });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -200,10 +239,35 @@ export function IncidentReportModal({ open, onClose, flagged }: Props) {
                 ))}
               </div>
             </div>
+
+            {/* Email Send */}
+            <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Send via Email</h3>
+              <div className="flex gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label htmlFor="email-to" className="text-xs text-muted-foreground">Recipients (comma-separated)</Label>
+                  <Input
+                    id="email-to"
+                    placeholder="security@company.com, ciso@company.com"
+                    value={emailTo}
+                    onChange={e => setEmailTo(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <Button onClick={handleSendEmail} disabled={sending} className="self-end gap-2 h-9">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Send
+                </Button>
+              </div>
+            </div>
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end pt-3 border-t border-border/50">
+        <div className="flex justify-end gap-2 pt-3 border-t border-border/50">
+          <Button onClick={handleDownloadPDF} variant="outline" className="gap-2">
+            <Download className="h-4 w-4" />
+            Export PDF
+          </Button>
           <Button onClick={handleCopy} variant="outline" className="gap-2">
             <Copy className="h-4 w-4" />
             Copy Report
